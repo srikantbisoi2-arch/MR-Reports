@@ -15,10 +15,20 @@ firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
 // State Variables
-let currentUser = null; // Username string or 'admin'
-let userRole = null;    // 'user' or 'admin'
+let currentUser = null;
+let userRole = null;
 
-// Switch Login Tab (User vs Admin) - Default is USER
+// Helper: Local Cached Users Operations (for Offline Login)
+function getCachedUsers() {
+  const users = localStorage.getItem('cached_users');
+  return users ? JSON.parse(users) : {};
+}
+
+function saveCachedUsers(usersObj) {
+  localStorage.setItem('cached_users', JSON.stringify(usersObj));
+}
+
+// Switch Login Tab (User vs Admin)
 function switchLoginType(type) {
   const userForm = document.getElementById('user-login-form');
   const adminForm = document.getElementById('admin-login-form');
@@ -38,7 +48,7 @@ function switchLoginType(type) {
   }
 }
 
-// User Login Submit (PIN ONLY)
+// USER LOGIN (WORKS ONLINE & OFFLINE)
 document.getElementById('user-login-form').addEventListener('submit', function (e) {
   e.preventDefault();
   const pin = document.getElementById('login-pin').value.trim();
@@ -48,33 +58,59 @@ document.getElementById('user-login-form').addEventListener('submit', function (
     return;
   }
 
-  // Find user by PIN
-  database.ref('users').once('value').then(snapshot => {
-    const users = snapshot.val();
-    let foundUsername = null;
+  // Check Online First; If Offline, Check Local Cache
+  if (navigator.onLine) {
+    database.ref('users').once('value').then(snapshot => {
+      const users = snapshot.val() || {};
+      saveCachedUsers(users); // Cache users locally for future offline use
 
-    if (users) {
+      let foundUsername = null;
       for (let uname in users) {
         if (users[uname].pin === pin) {
           foundUsername = uname;
           break;
         }
       }
-    }
 
-    if (foundUsername) {
-      currentUser = foundUsername;
-      userRole = 'user';
-      startUserSession();
-    } else {
-      alert('Invalid PIN! No account found for this PIN.');
-    }
-  }).catch(err => {
-    alert('Error connecting to server: ' + err.message);
-  });
+      if (foundUsername) {
+        currentUser = foundUsername;
+        userRole = 'user';
+        startUserSession();
+      } else {
+        alert('Invalid PIN! No account found for this PIN.');
+      }
+    }).catch(err => {
+      // Fallback to offline check if network error occurs
+      loginOfflineByPin(pin);
+    });
+  } else {
+    loginOfflineByPin(pin);
+  }
 });
 
-// Admin Login Submit (Master ID: 764061)
+// Offline Login Helper Function
+function loginOfflineByPin(pin) {
+  const cachedUsers = getCachedUsers();
+  let foundUsername = null;
+
+  for (let uname in cachedUsers) {
+    if (cachedUsers[uname].pin === pin) {
+      foundUsername = uname;
+      break;
+    }
+  }
+
+  if (foundUsername) {
+    currentUser = foundUsername;
+    userRole = 'user';
+    alert('Logged in Offline Mode.');
+    startUserSession();
+  } else {
+    alert('Offline Error: Account not found in local cache. Please connect to internet once to sync login credentials.');
+  }
+}
+
+// ADMIN LOGIN (MASTER ID: 764061)
 document.getElementById('admin-login-form').addEventListener('submit', function (e) {
   e.preventDefault();
   const adminId = document.getElementById('admin-id').value.trim();
@@ -116,7 +152,6 @@ function logout() {
   document.getElementById('syncin-section').style.display = 'none';
   document.getElementById('admin-panel-section').style.display = 'none';
   
-  // Reset Forms and Default to User Login View
   document.getElementById('user-login-form').reset();
   document.getElementById('admin-login-form').reset();
   switchLoginType('user');
@@ -166,29 +201,42 @@ function getStoredRecords() {
   return data ? JSON.parse(data) : [];
 }
 
-// USER-SPECIFIC CONTINUOUS SL NO
+function getStoredLastSlNo() {
+  const lastSl = localStorage.getItem(`last_sl_${currentUser}`);
+  return lastSl ? parseInt(lastSl) : 0;
+}
+
+function setStoredLastSlNo(slNo) {
+  localStorage.setItem(`last_sl_${currentUser}`, slNo);
+}
+
+// CONTINUOUS SL NO (WORKS COMPLETELY OFFLINE & ONLINE)
 async function fetchNextSlNo() {
   const localRecords = getStoredRecords();
-  let maxSlNo = 0;
+  let maxSlNo = getStoredLastSlNo();
 
+  // Check local unsynced records
   localRecords.forEach(r => {
-    if (r.slNo && r.slNo > maxSlNo) maxSlNo = r.slNo;
+    if (r.slNo && parseInt(r.slNo) > maxSlNo) maxSlNo = parseInt(r.slNo);
   });
 
-  try {
-    const snapshot = await database.ref(`user_data/${currentUser}`).once('value');
-    const cloudData = snapshot.val();
-    
-    if (cloudData) {
-      for (let key in cloudData) {
-        const item = cloudData[key];
-        if (item.slNo && parseInt(item.slNo) > maxSlNo) {
-          maxSlNo = parseInt(item.slNo);
+  // If online, also check cloud database
+  if (navigator.onLine) {
+    try {
+      const snapshot = await database.ref(`user_data/${currentUser}`).once('value');
+      const cloudData = snapshot.val();
+      
+      if (cloudData) {
+        for (let key in cloudData) {
+          const item = cloudData[key];
+          if (item.slNo && parseInt(item.slNo) > maxSlNo) {
+            maxSlNo = parseInt(item.slNo);
+          }
         }
       }
+    } catch (err) {
+      console.log("Offline mode: Using cached Sl No.");
     }
-  } catch (err) {
-    console.error("Sl No Fetch Error:", err);
   }
 
   return maxSlNo + 1;
@@ -224,6 +272,7 @@ document.getElementById('data-form').addEventListener('submit', function (e) {
   if (editIndex === -1) {
     const newRecord = { slNo, dateTime, consumerNo, meterNo, meterType, remarks };
     records.push(newRecord);
+    setStoredLastSlNo(slNo); // Update last used serial number locally
     alert('Data saved locally successfully!');
   } else {
     records[editIndex] = {
@@ -296,8 +345,13 @@ function editRecord(index) {
   document.getElementById('btn-save').innerText = 'Update Data';
 }
 
-// SYNC OUT
+// SYNC OUT DATA TO CLOUD
 function syncOutData() {
+  if (!navigator.onLine) {
+    alert("No Internet Connection! Please connect to internet to sync data.");
+    return;
+  }
+
   const records = getStoredRecords();
 
   if (records.length === 0) {
@@ -329,14 +383,20 @@ function syncOutData() {
       }
     }).catch(err => {
       console.error("Sync Error:", err);
-      alert("Error: " + err.message);
+      alert("Error syncing data: " + err.message);
     });
   });
 }
 
-// SYNC IN
+// SYNC IN DATA FROM CLOUD
 function syncInData() {
   const tbody = document.getElementById('syncin-tbody');
+
+  if (!navigator.onLine) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Offline Mode: Connect to internet to view cloud reports.</td></tr>`;
+    return;
+  }
+
   tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Loading cloud data...</td></tr>`;
 
   database.ref(`user_data/${currentUser}`).once('value').then(snapshot => {
@@ -368,11 +428,18 @@ function syncInData() {
       `;
       tbody.appendChild(row);
     }
+  }).catch(err => {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Failed to load cloud data.</td></tr>`;
   });
 }
 
 // USER DELETE REQUEST
 function requestDelete(key) {
+  if (!navigator.onLine) {
+    alert("Internet connection required to send delete request!");
+    return;
+  }
+
   if (confirm("Are you sure you want to request deletion for this record?")) {
     database.ref(`user_data/${currentUser}/${key}`).update({
       deleteRequested: true
@@ -387,7 +454,7 @@ function requestDelete(key) {
   }
 }
 
-// EXPORT TO EXCEL/CSV HELPER FUNCTION
+// EXPORT TO EXCEL/CSV
 function exportToCSV(filename, rowsData) {
   let csvContent = "data:text/csv;charset=utf-8,";
   
@@ -405,8 +472,12 @@ function exportToCSV(filename, rowsData) {
   document.body.removeChild(link);
 }
 
-// DOWNLOAD USER DATA (USER PANEL)
 function downloadUserDataCSV() {
+  if (!navigator.onLine) {
+    alert("Internet connection required to download cloud data.");
+    return;
+  }
+
   database.ref(`user_data/${currentUser}`).once('value').then(snapshot => {
     const data = snapshot.val();
     if (!data) {
@@ -432,11 +503,15 @@ function downloadUserDataCSV() {
   });
 }
 
-// DOWNLOAD SELECTED USER DATA (ADMIN PANEL)
 function downloadSelectedUserCSV() {
   const selectedUser = document.getElementById('admin-select-user').value;
   if (!selectedUser) {
     alert("Please select a user first to download data!");
+    return;
+  }
+
+  if (!navigator.onLine) {
+    alert("Internet connection required to download user data.");
     return;
   }
 
@@ -494,7 +569,7 @@ function switchAdminSubTab(viewName) {
   }
 }
 
-// CREATE USER FORM (WITH DUPLICATE PIN & USERNAME CHECK)
+// CREATE USER FORM
 document.getElementById('create-user-form').addEventListener('submit', function (e) {
   e.preventDefault();
   const uname = document.getElementById('new-username').value.trim();
@@ -505,7 +580,11 @@ document.getElementById('create-user-form').addEventListener('submit', function 
     return;
   }
 
-  // Check if PIN already exists for any user
+  if (!navigator.onLine) {
+    alert("Internet connection required to create a new user!");
+    return;
+  }
+
   database.ref('users').once('value').then(snapshot => {
     const users = snapshot.val() || {};
 
@@ -516,30 +595,38 @@ document.getElementById('create-user-form').addEventListener('submit', function 
 
     for (let u in users) {
       if (users[u].pin === pin) {
-        alert("This 4-Digit PIN is already assigned to another user! Please choose a different PIN.");
+        alert("This 4-Digit PIN is already assigned to another user!");
         return;
       }
     }
 
-    // Create User if unique
-    database.ref(`users/${uname}`).set({
-      pin: pin,
-      createdAt: getCurrentDateTime()
-    }).then(() => {
+    const newUserObj = { pin: pin, createdAt: getCurrentDateTime() };
+
+    database.ref(`users/${uname}`).set(newUserObj).then(() => {
+      // Save locally to cache so user can login offline later
+      users[uname] = newUserObj;
+      saveCachedUsers(users);
+
       alert(`User "${uname}" created successfully with PIN: ${pin}`);
       document.getElementById('create-user-form').reset();
     });
   });
 });
 
-// LOAD ALL USERS & PIN RESET / DELETE USER
+// LOAD ALL USERS
 function loadUsersListInAdmin() {
   const tbody = document.getElementById('admin-users-tbody');
   tbody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
 
+  if (!navigator.onLine) {
+    tbody.innerHTML = '<tr><td colspan="3">Offline Mode: Connect to internet to manage users.</td></tr>';
+    return;
+  }
+
   database.ref('users').once('value').then(snapshot => {
     tbody.innerHTML = '';
     const users = snapshot.val();
+    saveCachedUsers(users || {});
 
     if (!users) {
       tbody.innerHTML = '<tr><td colspan="3">No registered users found.</td></tr>';
@@ -566,7 +653,6 @@ function adminResetPin(uname) {
   const newPin = prompt(`Enter new unique 4-digit PIN for user "${uname}":`);
   if (newPin && newPin.length === 4 && !isNaN(newPin)) {
     
-    // Check if PIN is duplicate
     database.ref('users').once('value').then(snapshot => {
       const users = snapshot.val() || {};
       for (let u in users) {
@@ -577,6 +663,9 @@ function adminResetPin(uname) {
       }
 
       database.ref(`users/${uname}`).update({ pin: newPin }).then(() => {
+        if (users[uname]) users[uname].pin = newPin;
+        saveCachedUsers(users);
+
         alert("PIN reset successfully!");
         loadUsersListInAdmin();
       });
@@ -591,16 +680,21 @@ function adminDeleteUser(uname) {
   if (confirm(`Are you sure you want to delete user "${uname}" and all associated data?`)) {
     database.ref(`users/${uname}`).remove();
     database.ref(`user_data/${uname}`).remove().then(() => {
+      const users = getCachedUsers();
+      delete users[uname];
+      saveCachedUsers(users);
+
       alert("User and user data deleted.");
       loadUsersListInAdmin();
     });
   }
 }
 
-// VIEW SPECIFIC USER DATA
 function loadAdminUserDropdown() {
   const select = document.getElementById('admin-select-user');
   select.innerHTML = '<option value="">-- Choose User --</option>';
+
+  if (!navigator.onLine) return;
 
   database.ref('users').once('value').then(snapshot => {
     const users = snapshot.val();
@@ -651,10 +745,14 @@ function loadAdminSelectedUserData() {
   });
 }
 
-// DELETE REQUESTS MANAGEMENT
 function loadDeleteRequestsInAdmin() {
   const tbody = document.getElementById('admin-requests-tbody');
   tbody.innerHTML = '<tr><td colspan="5">Loading requests...</td></tr>';
+
+  if (!navigator.onLine) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Offline Mode: Connect to internet to manage delete requests.</td></tr>';
+    return;
+  }
 
   database.ref('delete_requests').once('value').then(snapshot => {
     tbody.innerHTML = '';
