@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Entry & Management System</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Firebase App & Realtime Database SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Screen 0: Login Selection / Form -->
+    <div id="login-section" class="content-section">
+      <h1 class="dash-title">System Login</h1>
+      <p class="dash-subtitle">Please select your login type:</p>
+
+      <div class="login-tabs">
+        <button id="tab-user-btn" class="active" onclick="switchLoginType('user')">User Login</button>
+        <button id="tab-admin-btn" onclick="switchLoginType('admin')">Admin Login</button>
+      </div>
+
+      <!-- User Login Form (PIN Only) -->
+      <form id="user-login-form" style="margin-top: 20px;">
+        <div class="form-group">
+          <label for="login-pin">Enter 4-Digit PIN:</label>
+          <input type="password" id="login-pin" maxlength="4" placeholder="Enter 4-Digit PIN" required>
+        </div>
+        <button type="submit" class="btn-save" style="width: 100%;">Login as User</button>
+      </form>
+
+      <!-- Admin Login Form -->
+      <form id="admin-login-form" style="display: none; margin-top: 20px;">
+        <div class="form-group">
+          <label for="admin-id">Admin ID:</label>
+          <input type="password" id="admin-id" placeholder="Enter ID" required>
+        </div>
+        <button type="submit" class="btn-save" style="width: 100%;">Login as Admin</button>
+      </form>
+    </div>
+
+    <!-- App Header (Logged In User Details) -->
+    <div id="app-header" class="app-header" style="display: none;">
+      <div>
+        <span id="user-display-name" class="user-badge">User</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Logout ??</button>
+    </div>
+
+    <!-- Screen 1: USER DASHBOARD -->
+    <div id="dashboard-section" class="content-section" style="display: none;">
+      <h1 class="dash-title">User Dashboard</h1>
+      <p class="dash-subtitle">Select an option to proceed:</p>
+      
+      <div class="card-grid">
+        <div class="card" onclick="openSection('add')">
+          <div class="card-icon">??</div>
+          <h2>Add Data</h2>
+          <p>Create new entry record</p>
+        </div>
+
+        <div class="card" onclick="openSection('reports')">
+          <div class="card-icon">??</div>
+          <h2>Local Reports</h2>
+          <p>View offline data and Sync Out</p>
+        </div>
+
+        <div class="card" onclick="openSection('syncin')">
+          <div class="card-icon">??</div>
+          <h2>Sync-In Reports</h2>
+          <p>Cloud reports & Download Data</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 2: ADD / EDIT DATA FORM -->
+    <div id="add-data-section" class="content-section" style="display: none;">
+      <div class="header-with-back">
+        <button class="btn-back" onclick="goToDashboard()">? Back to Dashboard</button>
+        <h2 id="form-heading">Add New Record</h2>
+      </div>
+
+      <form id="data-form">
+        <input type="hidden" id="edit-index" value="-1">
+
+        <div class="form-group">
+          <label for="sl-no">Sl No:</label>
+          <input type="text" id="sl-no" readonly placeholder="Fetching Sl No...">
+        </div>
+
+        <div class="form-group">
+          <label for="date-time">Date & Time:</label>
+          <input type="text" id="date-time" readonly>
+        </div>
+
+        <div class="form-group">
+          <label for="consumer-no">Consumer Number:</label>
+          <input type="text" id="consumer-no" placeholder="Enter Consumer Number" required>
+        </div>
+
+        <div class="form-group">
+          <label for="meter-no">Meter No:</label>
+          <input type="text" id="meter-no" placeholder="Enter Meter Number" required>
+        </div>
+
+        <div class="form-group">
+          <label for="meter-type">Meter Type:</label>
+          <select id="meter-type" required>
+            <option value="" disabled selected>Select Option</option>
+            <option value="Meter Height">Meter Height</option>
+            <option value="Meter Inside">Meter Inside</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="remarks">Remarks:</label>
+          <textarea id="remarks" rows="3" placeholder="Enter Remarks"></textarea>
+        </div>
+
+        <div class="button-group">
+          <button type="button" class="btn-clear" onclick="resetForm()">Clear Form</button>
+          <button type="submit" id="btn-save" class="btn-save">Save Data</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Screen 3: LOCAL REPORTS -->
+    <div id="reports-section" class="content-section" style="display: none;">
+      <div class="header-with-back">
+        <button class="btn-back" onclick="goToDashboard()">? Back to Dashboard</button>
+        <div class="reports-header-actions">
+          <h2>Local Reports</h2>
+          <button class="btn-sync" onclick="syncOutData()">?? Sync Out Data</button>
+        </div>
+      </div>
+      
+      <div class="search-container">
+        <input type="text" id="search-input" onkeyup="filterReports('reports-tbody', 'search-input')" placeholder="Search by Consumer No or Meter No...">
+      </div>
+
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Sl No</th>
+              <th>Date & Time</th>
+              <th>Consumer No</th>
+              <th>Meter No</th>
+              <th>Meter Type</th>
+              <th>Remarks</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="reports-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Screen 4: USER SYNC-IN REPORTS -->
+    <div id="syncin-section" class="content-section" style="display: none;">
+      <div class="header-with-back">
+        <button class="btn-back" onclick="goToDashboard()">? Back to Dashboard</button>
+        <div class="reports-header-actions">
+          <h2>Sync-In Reports</h2>
+          <button class="btn-download" onclick="downloadUserDataCSV()">?? Download Data (CSV)</button>
+          <button class="btn-syncin" onclick="syncInData()">?? Refresh</button>
+        </div>
+      </div>
+
+      <div class="search-container">
+        <input type="text" id="syncin-search-input" onkeyup="filterReports('syncin-tbody', 'syncin-search-input')" placeholder="Search by Consumer No or Meter No...">
+      </div>
+
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Sl No</th>
+              <th>Date & Time</th>
+              <th>Consumer No</th>
+              <th>Meter No</th>
+              <th>Meter Type</th>
+              <th>Remarks</th>
+              <th>Delete Request</th>
+            </tr>
+          </thead>
+          <tbody id="syncin-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Screen 5: ADMIN PANEL -->
+    <div id="admin-panel-section" class="content-section" style="display: none;">
+      <h1 class="dash-title">Admin Panel</h1>
+
+      <!-- Admin Actions Bar -->
+      <div class="admin-nav">
+        <button class="btn-admin-tab active" onclick="switchAdminSubTab('create-user')">Create User</button>
+        <button class="btn-admin-tab" onclick="switchAdminSubTab('manage-users')">User List & Reset PIN</button>
+        <button class="btn-admin-tab" onclick="switchAdminSubTab('view-user-data')">View User Data</button>
+        <button class="btn-admin-tab" onclick="switchAdminSubTab('delete-requests')">Delete Requests</button>
+      </div>
+
+      <!-- Admin Sub-tab 1: Create User -->
+      <div id="admin-create-user-view" class="admin-subview">
+        <h3>Create New User</h3>
+        <form id="create-user-form" style="margin-top: 15px;">
+          <div class="form-group">
+            <label for="new-username">Username:</label>
+            <input type="text" id="new-username" placeholder="Enter Unique Username" required>
+          </div>
+          <div class="form-group">
+            <label for="new-pin">4-Digit PIN:</label>
+            <input type="password" id="new-pin" maxlength="4" placeholder="Enter Unique 4-Digit PIN" required>
+          </div>
+          <button type="submit" class="btn-save">Create User Account</button>
+        </form>
+      </div>
+
+      <!-- Admin Sub-tab 2: Manage Users -->
+      <div id="admin-manage-users-view" class="admin-subview" style="display: none;">
+        <h3>All Registered Users</h3>
+        <div class="table-responsive" style="margin-top: 15px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Current PIN</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-users-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Admin Sub-tab 3: View All Users Data -->
+      <div id="admin-view-data-view" class="admin-subview" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <h3>User Data Records</h3>
+          <button class="btn-download" onclick="downloadSelectedUserCSV()">?? Download Selected User Data (CSV)</button>
+        </div>
+
+        <div class="form-group" style="margin-top: 15px;">
+          <label for="admin-select-user">Select User:</label>
+          <select id="admin-select-user" onchange="loadAdminSelectedUserData()">
+            <option value="">-- Choose User --</option>
+          </select>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Sl No</th>
+                <th>Date & Time</th>
+                <th>Consumer No</th>
+                <th>Meter No</th>
+                <th>Meter Type</th>
+                <th>Remarks</th>
+              </tr>
+            </thead>
+            <tbody id="admin-user-data-tbody">
+              <tr><td colspan="6" style="text-align:center;">Please select a user to view data.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Admin Sub-tab 4: Delete Requests -->
+      <div id="admin-delete-requests-view" class="admin-subview" style="display: none;">
+        <h3>Pending Delete Requests</h3>
+        <div class="table-responsive" style="margin-top: 15px;">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Sl No</th>
+                <th>Consumer No</th>
+                <th>Meter No</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="admin-requests-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
