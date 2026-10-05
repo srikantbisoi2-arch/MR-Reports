@@ -88,7 +88,7 @@ document.getElementById('user-login-form').addEventListener('submit', function (
   }
 });
 
-// Offline Login Helper Function
+// Offline Login Helper Function (No Popup Alert - Direct Login)
 function loginOfflineByPin(pin) {
   const cachedUsers = getCachedUsers();
   let foundUsername = null;
@@ -103,7 +103,6 @@ function loginOfflineByPin(pin) {
   if (foundUsername) {
     currentUser = foundUsername;
     userRole = 'user';
-    alert('Logged in Offline Mode.');
     startUserSession();
   } else {
     alert('Offline Error: Account not found in local cache. Please connect to internet once to sync login credentials.');
@@ -210,7 +209,7 @@ function setStoredLastSlNo(slNo) {
   localStorage.setItem(`last_sl_${currentUser}`, slNo);
 }
 
-// CONTINUOUS SL NO (WORKS COMPLETELY OFFLINE & ONLINE)
+// CONTINUOUS SL NO GENERATOR (FOR LOCAL FORM)
 async function fetchNextSlNo() {
   const localRecords = getStoredRecords();
   let maxSlNo = getStoredLastSlNo();
@@ -272,7 +271,7 @@ document.getElementById('data-form').addEventListener('submit', function (e) {
   if (editIndex === -1) {
     const newRecord = { slNo, dateTime, consumerNo, meterNo, meterType, remarks };
     records.push(newRecord);
-    setStoredLastSlNo(slNo); // Update last used serial number locally
+    setStoredLastSlNo(slNo);
     alert('Data saved locally successfully!');
   } else {
     records[editIndex] = {
@@ -345,8 +344,8 @@ function editRecord(index) {
   document.getElementById('btn-save').innerText = 'Update Data';
 }
 
-// SYNC OUT DATA TO CLOUD
-function syncOutData() {
+// SMART SYNCOUT DATA (AUTO-SEQUENCE CONTINUOUS SL NO IN DATABASE)
+async function syncOutData() {
   if (!navigator.onLine) {
     alert("No Internet Connection! Please connect to internet to sync data.");
     return;
@@ -359,33 +358,58 @@ function syncOutData() {
     return;
   }
 
-  let completed = 0;
-  const total = records.length;
-
-  records.forEach(record => {
-    const dataToUpload = {
-      slNo: record.slNo,
-      dateTime: record.dateTime,
-      consumerNo: record.consumerNo,
-      meterNo: record.meterNo,
-      meterType: record.meterType,
-      remarks: record.remarks,
-      user: currentUser,
-      deleteRequested: false
-    };
-
-    database.ref(`user_data/${currentUser}`).push(dataToUpload).then(() => {
-      completed++;
-      if (completed === total) {
-        alert(`${total} record(s) synced to cloud successfully!`);
-        localStorage.removeItem(getStorageKey());
-        renderLocalReports();
+  try {
+    // 1. Fetch current max Sl No from Firebase Database
+    const snapshot = await database.ref(`user_data/${currentUser}`).once('value');
+    const cloudData = snapshot.val();
+    
+    let maxCloudSlNo = 0;
+    if (cloudData) {
+      for (let key in cloudData) {
+        const item = cloudData[key];
+        if (item.slNo && parseInt(item.slNo) > maxCloudSlNo) {
+          maxCloudSlNo = parseInt(item.slNo);
+        }
       }
-    }).catch(err => {
-      console.error("Sync Error:", err);
-      alert("Error syncing data: " + err.message);
+    }
+
+    let currentSlNo = maxCloudSlNo;
+    let completed = 0;
+    const total = records.length;
+
+    // 2. Adjust local records to continuous sequence and upload
+    records.forEach(record => {
+      currentSlNo++; // Auto increment from latest cloud Sl No
+
+      const dataToUpload = {
+        slNo: currentSlNo,
+        dateTime: record.dateTime,
+        consumerNo: record.consumerNo,
+        meterNo: record.meterNo,
+        meterType: record.meterType,
+        remarks: record.remarks,
+        user: currentUser,
+        deleteRequested: false
+      };
+
+      database.ref(`user_data/${currentUser}`).push(dataToUpload).then(() => {
+        completed++;
+        if (completed === total) {
+          // Update local stored highest Sl No
+          setStoredLastSlNo(currentSlNo);
+          alert(`${total} record(s) synced to cloud successfully with continuous Sl No starting from ${maxCloudSlNo + 1}!`);
+          localStorage.removeItem(getStorageKey());
+          renderLocalReports();
+        }
+      }).catch(err => {
+        console.error("Sync Error:", err);
+        alert("Error syncing data: " + err.message);
+      });
     });
-  });
+
+  } catch (err) {
+    alert("Database Connection Error: " + err.message);
+  }
 }
 
 // SYNC IN DATA FROM CLOUD
