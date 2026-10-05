@@ -48,7 +48,7 @@
       <div>
         <span id="user-display-name" class="user-badge">User</span>
       </div>
-      <button class="btn-logout" onclick="logout()">Logout ??</button>
+      <button class="btn-logout" onclick="logout()">Logout 🚪</button>
     </div>
 
     <!-- Screen 1: USER DASHBOARD -->
@@ -58,19 +58,19 @@
       
       <div class="card-grid">
         <div class="card" onclick="openSection('add')">
-          <div class="card-icon">??</div>
+          <div class="card-icon">📝</div>
           <h2>Add Data</h2>
           <p>Create new entry record</p>
         </div>
 
         <div class="card" onclick="openSection('reports')">
-          <div class="card-icon">??</div>
+          <div class="card-icon">📊</div>
           <h2>Local Reports</h2>
           <p>View offline data and Sync Out</p>
         </div>
 
         <div class="card" onclick="openSection('syncin')">
-          <div class="card-icon">??</div>
+          <div class="card-icon">☁️</div>
           <h2>Sync-In Reports</h2>
           <p>Cloud reports & Download Data</p>
         </div>
@@ -80,7 +80,7 @@
     <!-- Screen 2: ADD / EDIT DATA FORM -->
     <div id="add-data-section" class="content-section" style="display: none;">
       <div class="header-with-back">
-        <button class="btn-back" onclick="goToDashboard()">? Back to Dashboard</button>
+        <button class="btn-back" onclick="goToDashboard()">← Back to Dashboard</button>
         <h2 id="form-heading">Add New Record</h2>
       </div>
 
@@ -131,10 +131,10 @@
     <!-- Screen 3: LOCAL REPORTS -->
     <div id="reports-section" class="content-section" style="display: none;">
       <div class="header-with-back">
-        <button class="btn-back" onclick="goToDashboard()">? Back to Dashboard</button>
+        <button class="btn-back" onclick="goToDashboard()">← Back to Dashboard</button>
         <div class="reports-header-actions">
           <h2>Local Reports</h2>
-          <button class="btn-sync" onclick="syncOutData()">?? Sync Out Data</button>
+          <button class="btn-sync" onclick="syncOutData()">📤 Sync Out Data</button>
         </div>
       </div>
       
@@ -164,11 +164,11 @@
     <!-- Screen 4: USER SYNC-IN REPORTS -->
     <div id="syncin-section" class="content-section" style="display: none;">
       <div class="header-with-back">
-        <button class="btn-back" onclick="goToDashboard()">? Back to Dashboard</button>
+        <button class="btn-back" onclick="goToDashboard()">← Back to Dashboard</button>
         <div class="reports-header-actions">
           <h2>Sync-In Reports</h2>
-          <button class="btn-download" onclick="downloadUserDataCSV()">?? Download Data (CSV)</button>
-          <button class="btn-syncin" onclick="syncInData()">?? Refresh</button>
+          <button class="btn-download" onclick="downloadUserDataCSV()">📥 Download Data (CSV)</button>
+          <button class="btn-syncin" onclick="syncInData()">🔄 Refresh</button>
         </div>
       </div>
 
@@ -243,7 +243,7 @@
       <div id="admin-view-data-view" class="admin-subview" style="display: none;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
           <h3>User Data Records</h3>
-          <button class="btn-download" onclick="downloadSelectedUserCSV()">?? Download Selected User Data (CSV)</button>
+          <button class="btn-download" onclick="downloadSelectedUserCSV()">📥 Download Selected User Data (CSV)</button>
         </div>
 
         <div class="form-group" style="margin-top: 15px;">
